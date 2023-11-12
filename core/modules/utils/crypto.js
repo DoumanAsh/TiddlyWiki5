@@ -17,11 +17,17 @@ Utility functions related to crypto.
  *
  * If not used use some pre-defined constant
  */
-function Crypto(salt) {
+exports.Crypto = function(salt) {
     //node.js provides compatibility with Web API
     var inner = typeof window !== 'undefined' ? window.crypto : require('crypto').webcrypto;
+
+    //node.js compatibility do not have these globally exported
+    if (typeof window === 'undefined') {
+        var { TextEncoder, TextDecoder } = require("util");
+    }
+
     var enc = new TextEncoder();
-    var dec = new TextEncoder();
+    var dec = new TextDecoder();
 
     if (typeof salt === 'string') {
         salt = enc.encode(salt)
@@ -63,21 +69,21 @@ function Crypto(salt) {
     }
 
     function encrypt(input, key_or_password) {
-        var key = typeof key_or_password === 'CryptoKey' ? Promise.resolve(key_or_password) : this.generateKey(password);
+        var key = typeof key_or_password === 'CryptoKey' ? Promise.resolve(key_or_password) : this.generateKey(key_or_password);
         var algo = {
             name: "AES-GCM",
-            iv: randomLen(96),
+            //AES-GCM needs 12 bytes nonce
+            iv: randomLen(12),
         };
         function perform_encrypt(key) {
-            return inner.subtle.encrypt(algo, key, enc.encode(input))
+            return inner.subtle.encrypt(algo, key, enc.encode(input));
         }
 
         function encode(buffer) {
-            var codec = new TextDecoder('latin1');
+            //Not the most subtle encoding so could use improvement
             return JSON.stringify({
-                //todo base64?
-                data: codec.decode(buffer),
-                iv: codec.decode(algo.iv)
+                data: Array.from(new Uint8Array(buffer)),
+                iv: Array.from(algo.iv)
             });
         }
 
@@ -85,26 +91,24 @@ function Crypto(salt) {
     }
 
     function decrypt(input, key_or_password) {
-        var codec = new TextEncoder('latin1');
-        var key = typeof key_or_password === 'CryptoKey' ? Promise.resolve(key_or_password) : this.generateKey(password);
+        var key = typeof key_or_password === 'CryptoKey' ? Promise.resolve(key_or_password) : this.generateKey(key_or_password);
 
         function perform_decrypt(key)  {
             input = JSON.parse(input);
-            var data = codec.encode(input.data);
-            var iv = codec.encode(input.iv);
             var algo = {
                 name: "AES-GCM",
-                iv
+                iv: Uint8Array.from(input.iv)
             };
 
-            return inner.subtle.decrypt(algo, key, data);
+            return inner.subtle.decrypt(algo, key, Uint8Array.from(input.data));
         }
 
         function decode(buffer) {
-            return dec.decode(buffer);
+            var result = dec.decode(new Uint8Array(buffer));
+            return Promise.resolve(result);
         }
 
-        key.then(perform_decrypt).then(decode)
+        return key.then(perform_decrypt).then(decode)
     }
 
     return {
