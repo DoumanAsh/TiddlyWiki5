@@ -3,6 +3,7 @@ on:
   push:
     branches:
       - master
+      - improve_crypto
       - tiddlywiki-com
 env:
   NODE_VERSION: "18"
